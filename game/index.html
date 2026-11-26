@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Island Courier — a 3D island mail-plane game</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a2233; }
+  body {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #dff4ff;
+  }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel {
+    position: absolute;
+    background: rgba(6, 24, 38, 0.62);
+    border: 1px solid rgba(125, 249, 255, 0.35);
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 0 14px rgba(125, 249, 255, 0.18), inset 0 0 18px rgba(125, 249, 255, 0.06);
+    backdrop-filter: blur(2px);
+  }
+  .panel .label {
+    font-size: 10px; letter-spacing: 0.18em; color: #8fd8ef;
+    text-transform: uppercase;
+  }
+  .panel .value {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 26px; font-weight: bold; color: #ffffff;
+    text-shadow: 0 0 10px rgba(125, 249, 255, 0.9), 0 0 26px rgba(125, 249, 255, 0.4);
+    line-height: 1.15;
+  }
+  .panel .value.small { font-size: 17px; }
+
+  #hud-flight { top: 14px; left: 14px; min-width: 168px; }
+  #hud-flight .row { display: flex; justify-content: space-between; gap: 18px; align-items: baseline; }
+  #hud-flight .row + .row { margin-top: 4px; }
+
+  #hud-compass-wrap { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #hud-compass { display: block; border-radius: 6px; }
+  #hud-objective {
+    margin-top: 6px; font-size: 14px; font-weight: 600; color: #ffe9a8;
+    text-shadow: 0 0 10px rgba(255, 201, 60, 0.7);
+  }
+  #hud-distance {
+    font-family: Consolas, "Courier New", monospace; font-size: 12px; color: #9be9ff;
+  }
+
+  #hud-score-panel { top: 14px; right: 14px; text-align: right; min-width: 150px; }
+  #hud-score-panel .value { color: #ffe9a8; text-shadow: 0 0 10px rgba(255, 201, 60, 0.9), 0 0 26px rgba(255, 201, 60, 0.4); }
+
+  #hud-attitude { left: 14px; bottom: 14px; display: flex; gap: 14px; align-items: center; }
+  #hud-horizon { border-radius: 50%; box-shadow: 0 0 14px rgba(125, 249, 255, 0.35); }
+  #hud-throttle-box { width: 130px; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 0.14em; color: #8fd8ef; text-transform: uppercase; }
+  .bar-label .bar-value { font-family: Consolas, "Courier New", monospace; font-size: 13px; color: #fff; letter-spacing: 0; }
+  .bar-track {
+    height: 12px; margin-top: 4px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(125, 249, 255, 0.3); overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #1fb6d6, #7df9ff);
+    box-shadow: 0 0 12px rgba(125, 249, 255, 0.8);
+    transition: width 0.12s linear;
+  }
+  #hud-fuel-fill { background: linear-gradient(90deg, #3fae5a, #8dff6a); box-shadow: 0 0 12px rgba(120, 255, 120, 0.7); }
+  #hud-fuel-fill.low { background: linear-gradient(90deg, #d63a2a, #ff9a3c); box-shadow: 0 0 12px rgba(255, 90, 60, 0.9); }
+  #hud-damage-fill { background: linear-gradient(90deg, #e8a13c, #e84c3c); box-shadow: 0 0 12px rgba(255, 120, 60, 0.8); }
+
+  #hud-fuel-panel { right: 14px; bottom: 14px; width: 210px; }
+  #hud-fuel-panel .bar-block + .bar-block { margin-top: 10px; }
+
+  #hud-warning {
+    position: absolute; top: 108px; left: 50%; transform: translateX(-50%);
+    font-family: Consolas, "Courier New", monospace; font-size: 20px; font-weight: bold;
+    color: #ff5a4a; text-shadow: 0 0 14px rgba(255, 60, 40, 0.95);
+    letter-spacing: 0.14em; opacity: 0; animation: blink 0.7s steps(2) infinite;
+  }
+  #hud-warning.visible { opacity: 1; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  #hud-message {
+    position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%) scale(0.96);
+    font-size: 30px; font-weight: 800; letter-spacing: 0.06em; color: #ffe9a8;
+    text-shadow: 0 0 16px rgba(255, 201, 60, 0.95), 0 2px 6px rgba(0, 0, 0, 0.6);
+    opacity: 0; transition: opacity 0.18s ease, transform 0.18s ease;
+    white-space: nowrap;
+  }
+  #hud-message.visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+  #hud-target-arrow {
+    position: absolute; width: 0; height: 0; display: none;
+    border-left: 16px solid transparent; border-right: 16px solid transparent;
+    border-bottom: 26px solid rgba(255, 201, 60, 0.95);
+    filter: drop-shadow(0 0 8px rgba(255, 201, 60, 0.9));
+  }
+  #hud-target-arrow.visible { display: block; }
+
+  #hud-help {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: 0.08em; color: rgba(223, 244, 255, 0.6);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); white-space: nowrap;
+  }
+
+  /* ---- Full-screen overlays ---- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 10; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(4, 18, 30, 0.45);
+  }
+  .overlay.visible { display: flex; }
+  /* The title screen sits on the left so the parked plane stays visible
+     on the right of the frame; the other overlays stay centred. */
+  #screen-start { justify-content: flex-start; padding-left: 4vw; }
+  /* Same for the mission-complete screen: the parked courier reads
+     beside the score card instead of behind it. */
+  #screen-complete { justify-content: flex-start; padding-left: 4vw; }
+  /* The title card is compact so it clears the flight panel above it. */
+  #screen-start .card { width: min(560px, 88vw); padding: 22px 32px 20px; }
+  #screen-start .card h1 { font-size: 36px; }
+  #screen-start .card p { margin-top: 10px; }
+  #screen-start .card .controls { margin-top: 12px; line-height: 1.75; }
+  #screen-start .button-row { margin-top: 18px; }
+  #screen-start .hint { margin-top: 12px; }
+  .card {
+    width: min(620px, 92vw); padding: 34px 40px 30px; text-align: center;
+    background: rgba(6, 26, 40, 0.88);
+    border: 1px solid rgba(125, 249, 255, 0.5); border-radius: 14px;
+    box-shadow: 0 0 40px rgba(125, 249, 255, 0.25), inset 0 0 30px rgba(125, 249, 255, 0.05);
+  }
+  .card h1 {
+    font-size: 44px; letter-spacing: 0.1em; color: #ffffff;
+    text-shadow: 0 0 18px rgba(125, 249, 255, 0.9), 0 0 44px rgba(125, 249, 255, 0.45);
+  }
+  .card h2 { font-size: 30px; letter-spacing: 0.08em; color: #ffffff; text-shadow: 0 0 16px rgba(125, 249, 255, 0.8); }
+  .card .tagline { margin-top: 6px; font-size: 15px; color: #ffe9a8; letter-spacing: 0.04em; }
+  .card p { margin-top: 14px; font-size: 14px; line-height: 1.65; color: #cfeefc; }
+  .card .controls {
+    margin: 18px auto 0; text-align: left; display: inline-block;
+    font-size: 13px; line-height: 1.9; color: #bfe6f7;
+  }
+  .card .controls b { color: #7df9ff; font-family: Consolas, "Courier New", monospace; }
+  .card .reason { margin-top: 12px; font-size: 15px; color: #ffb3a6; }
+  .stat-row {
+    display: flex; justify-content: space-between; gap: 20px;
+    font-family: Consolas, "Courier New", monospace; font-size: 15px;
+    padding: 5px 6px; border-bottom: 1px dashed rgba(125, 249, 255, 0.25); color: #dff4ff;
+  }
+  .stat-row:last-child { border-bottom: none; color: #ffe9a8; font-weight: bold; font-size: 18px; }
+  #complete-stats { margin-top: 16px; text-align: left; }
+  .button-row { margin-top: 24px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button {
+    pointer-events: auto; cursor: pointer;
+    font-family: inherit; font-size: 16px; font-weight: 700; letter-spacing: 0.06em;
+    color: #06222f; background: linear-gradient(180deg, #8ff5ff, #37b6d6);
+    border: none; border-radius: 8px; padding: 12px 26px;
+    box-shadow: 0 0 18px rgba(125, 249, 255, 0.55);
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondary { background: rgba(255, 255, 255, 0.12); color: #dff4ff; border: 1px solid rgba(125, 249, 255, 0.5); box-shadow: none; }
+  .hint { margin-top: 16px; font-size: 12px; color: rgba(207, 238, 252, 0.65); }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud">
+  <div id="hud-flight" class="panel">
+    <div class="row"><span class="label">Altitude</span><span class="value" id="hud-altitude">0 ft</span></div>
+    <div class="row"><span class="label">Speed</span><span class="value" id="hud-speed">0 kt</span></div>
+    <div class="row"><span class="label">Vert speed</span><span class="value small" id="hud-vertical-speed">+0 fpm</span></div>
+  </div>
+
+  <div id="hud-compass-wrap" class="panel">
+    <canvas id="hud-compass" width="320" height="56"></canvas>
+    <div id="hud-objective">Thread the rings, then land</div>
+    <div id="hud-distance"></div>
+  </div>
+
+  <div id="hud-score-panel" class="panel">
+    <div class="label">Score</div>
+    <div class="value" id="hud-score">00000</div>
+    <div class="label" style="margin-top:6px">Time</div>
+    <div class="value small" id="hud-timer">00:00</div>
+  </div>
+
+  <div id="hud-attitude" class="panel">
+    <canvas id="hud-horizon" width="120" height="120"></canvas>
+    <div id="hud-throttle-box">
+      <div class="bar-label"><span>Throttle</span><span class="bar-value" id="hud-throttle-value">0%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="hud-throttle-fill"></div></div>
+      <div class="bar-label" style="margin-top:8px"><span>Bank</span><span class="bar-value" id="hud-bank-value">0°</span></div>
+    </div>
+  </div>
+
+  <div id="hud-fuel-panel" class="panel">
+    <div class="bar-block">
+      <div class="bar-label"><span>Fuel</span><span class="bar-value" id="hud-fuel-value">100%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="hud-fuel-fill" style="width:100%"></div></div>
+    </div>
+    <div class="bar-block">
+      <div class="bar-label"><span>Damage</span><span class="bar-value" id="hud-damage-value">0%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="hud-damage-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div id="hud-warning"></div>
+  <div id="hud-message"></div>
+  <div id="hud-target-arrow"></div>
+  <div id="hud-help">W/S pitch &nbsp;·&nbsp; A/D bank &nbsp;·&nbsp; SHIFT / CTRL throttle &nbsp;·&nbsp; drag mouse to look &nbsp;·&nbsp; P pause &nbsp;·&nbsp; R restart &nbsp;·&nbsp; M mute</div>
+</div>
+
+<div id="screen-start" class="overlay">
+  <div class="card">
+    <h1>ISLAND COURIER</h1>
+    <div class="tagline">A 3D island mail-plane run — three deliveries, eight gold rings, one tank of fuel.</div>
+    <p>Fly the little red-and-white courier plane across a tropical archipelago.
+       Thread every glowing ring, then put her down gently on the island strip to
+       deliver the mail. Landings refuel the plane; hard landings bend it. The
+       clock charges by the second, so fly clean lines — not just full throttle.</p>
+    <div class="controls">
+      <div><b>W / S</b> or <b>↑ / ↓</b> — pitch up / down</div>
+      <div><b>A / D</b> or <b>← / →</b> — bank and turn</div>
+      <div><b>SHIFT / CTRL</b> (or + / −) — throttle up / down</div>
+      <div><b>Mouse drag</b> — look around &nbsp;·&nbsp; <b>double-click</b> — reset view</div>
+      <div><b>P</b> pause &nbsp;·&nbsp; <b>R</b> restart &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; <b>Enter</b> start</div>
+    </div>
+    <div class="button-row"><button id="button-start" type="button">START FLYING</button></div>
+    <div class="hint">Watch the gold arrow: it points at your next ring or runway. Keep the needle out of the red — below 16 kt the wing stalls.</div>
+  </div>
+</div>
+
+<div id="screen-pause" class="overlay">
+  <div class="card">
+    <h2>PAUSED</h2>
+    <p>The courier is holding overhead. Take a breath, check the chart, then get back to the mail run.</p>
+    <div class="button-row">
+      <button id="button-resume" type="button">RESUME</button>
+      <button id="button-restart-pause" class="secondary" type="button">RESTART SORTIE</button>
+    </div>
+  </div>
+</div>
+
+<div id="screen-crash" class="overlay">
+  <div class="card">
+    <h2>CRASHED</h2>
+    <div class="reason" id="crash-reason"></div>
+    <p>The mail is late, but the pilot walked away. Fuel, damage and the clock are what decide a sortie — fly the next one cleaner.</p>
+    <div class="button-row"><button id="button-fly-again" type="button">FLY AGAIN</button></div>
+    <div class="hint">Tip: line up with the strip early, keep speed under 95 kt, and flare — sink gently under 6 m/s.</div>
+  </div>
+</div>
+
+<div id="screen-complete" class="overlay">
+  <div class="card">
+    <h2>ALL DELIVERIES MADE</h2>
+    <p>The island mail is in, the plane is parked, and the tank is full again. Here is how the sortie scored:</p>
+    <div id="complete-stats"></div>
+    <div class="button-row"><button id="button-fly-again-complete" type="button">FLY IT AGAIN</button></div>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
