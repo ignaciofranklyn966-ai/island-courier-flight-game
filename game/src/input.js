@@ -14,12 +14,14 @@ export class InputManager {
     this.dragging = false;
     this.lastMouseX = 0;
     this.lastMouseY = 0;
-    // Callbacks the game wires up: pause, restart, mute, confirm, anyKey.
+    // Callbacks the game wires up: pause, restart, mute, confirm, anyKey,
+    // and the cockpit/chase view toggle.
     this.onPause = null;
     this.onRestart = null;
     this.onMute = null;
     this.onConfirm = null;
     this.onAnyKey = null;
+    this.onToggleCockpit = null;
     this.bindKeyboard();
     this.bindMouse();
   }
@@ -41,6 +43,8 @@ export class InputManager {
         if (this.onRestart) this.onRestart();
       } else if (key === 'm') {
         if (this.onMute) this.onMute();
+      } else if (key === 'c' || key === 'v') {
+        if (this.onToggleCockpit) this.onToggleCockpit();
       } else if (key === 'enter' || key === ' ') {
         if (this.onConfirm) this.onConfirm();
       }

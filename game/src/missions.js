@@ -190,6 +190,47 @@ export class MissionManager {
       this.handleTouchdown(plane);
       if (this.status === 'crashed' || this.status === 'complete') return;
     }
+
+    // Terrain / sea collision, checked every frame. A runway touchdown
+    // was already judged above, so this only fires away from the strips.
+    // The flight model holds a rolling plane on the surface, so a plane
+    // sitting on the ground away from a strip has driven into the terrain
+    // or the sea — that is the strike, not a landing. Only the sea ends
+    // a ground roll: a strip is only 120 m long and a pilot who rotates
+    // late legitimately rolls past the threshold onto the flat approach
+    // corridor before lifting off, so fast rolling on dry land is not a
+    // crash. The islands are finite, so a runaway roll always reaches
+    // the waterline and ditches there.
+    if (this.status === 'flying') {
+      const ground = this.world.terrainHeight(
+        plane.position.x,
+        plane.position.z,
+      );
+      const onRunway =
+        this.isOverRunway(plane.position, this.world.runwayA) ||
+        this.isOverRunway(plane.position, this.world.runwayB);
+      if (!onRunway) {
+        if (plane.grounded) {
+          if (ground < 0.5) {
+            this.crash(
+              'Ditched in the sea — the courier never made the strip.',
+            );
+            return;
+          }
+        } else if (plane.position.y <= ground + 0.5) {
+          // Over open water the ground is the seabed (height 0), so a
+          // low pass there is a ditching, not a hillside strike.
+          if (ground < 0.5) {
+            this.crash(
+              'Ditched in the sea — the courier never made the strip.',
+            );
+          } else {
+            this.crash('You flew into the hillside.');
+          }
+          return;
+        }
+      }
+    }
   }
 
   passRing(ring) {

@@ -36,14 +36,15 @@ function startGame() {
   const renderer = buildRenderer(canvas);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(
-    62,
+    CONFIG.camera.fov,
     window.innerWidth / window.innerHeight,
     0.5,
     6000,
   );
 
   const world = new World(scene, shotQuery.seed);
-  const { group: planeMesh, propeller } = buildCourierPlane();
+  const { group: planeMesh, propeller, canopy, cockpitPanel } =
+    buildCourierPlane();
   scene.add(planeMesh);
   const plane = new FlightModel(
     new THREE.Vector3(HOME_RUNWAY_START.x, world.runwayA.elevation + 1.45, HOME_RUNWAY_START.z),
@@ -63,6 +64,8 @@ function startGame() {
     state: 'menu',
     frozen: false,
     shotMode: null,
+    // 'chase' (default) or 'cockpit'; C / V toggles between them.
+    viewMode: 'chase',
     // Metres the look target shifts left, so the plane reads right of
     // centre — used by the screenshot poses, where an overlay card covers
     // the middle of the frame.
@@ -73,7 +76,7 @@ function startGame() {
 
   // A read-only handle for debugging and automated smoke tests; it opens
   // nothing to the network and changes nothing about the game.
-  window.__islandCourier = { plane, world, missions, hud, game };
+  window.__islandCourier = { plane, world, missions, hud, game, input, camera };
 
   // Chase camera: sit behind and above the plane, looking ahead down the
   // flight path. The camera follows heading and pitch but never the bank,
@@ -141,8 +144,54 @@ function startGame() {
     camera.lookAt(lookTarget);
   }
 
-  // Where the current target appears on screen, for the edge arrow and
-  // the compass marker. Returns { visible, angleDegrees, edgeX, edgeY }.
+  // Cockpit camera: sit in the pilot's seat and look forward over the
+  // nose. The camera rides the plane's heading, pitch and bank (like a
+  // head fixed to the airframe), the mouse drag offsets turn the head to
+  // look around, and the view rests a little below level so the nose and
+  // the instrument panel read in the lower frame. The opaque canopy is
+  // hidden in this view — the pilot looks through the windscreen, not at
+  // the inside of the dome — and the wider field of view keeps the
+  // wingtips reachable with a sideways glance.
+  function updateCockpitCamera(deltaTime) {
+    input.updateCameraOffset(deltaTime);
+    const offset = new THREE.Vector3(
+      CONFIG.camera.cockpit.offsetX,
+      CONFIG.camera.cockpit.offsetY,
+      CONFIG.camera.cockpit.offsetZ,
+    ).applyEuler(plane.mesh.rotation);
+    camera.position.copy(plane.position).add(offset);
+    const euler = new THREE.Euler(
+      plane.pitch + input.cameraPitchOffset - CONFIG.camera.cockpit.pitchDown,
+      -(plane.heading + input.cameraYawOffset),
+      -plane.bank,
+      'YXZ',
+    );
+    camera.quaternion.setFromEuler(euler);
+  }
+
+  // Switch between the chase camera and the cockpit seat. The cockpit
+  // opens the field of view and hides the canopy; switching back
+  // restores both. Screenshot poses always use the chase camera.
+  function setViewMode(mode, silent = false) {
+    if (mode === game.viewMode) return;
+    game.viewMode = mode;
+    const cockpit = mode === 'cockpit';
+    camera.fov = cockpit
+      ? CONFIG.camera.cockpit.fov
+      : CONFIG.camera.fov;
+    camera.updateProjectionMatrix();
+    if (canopy) canopy.visible = !cockpit;
+    // The glareshield panel only exists in the cockpit: it pokes out of
+    // the canopy, so it must stay hidden in the chase view.
+    if (cockpitPanel) cockpitPanel.visible = cockpit;
+    if (!silent) {
+      hud.showMessage(
+        cockpit ? 'COCKPIT VIEW — DRAG TO LOOK AROUND' : 'CHASE VIEW',
+        1.6,
+      );
+    }
+  }
+  game.setViewMode = setViewMode;
   function computeTargetScreen() {
     const target = missions.currentTargetPosition();
     if (!target) return null;
@@ -235,6 +284,8 @@ function startGame() {
     audio.ensureAudioContext();
     audio.playClickBlip();
     missions.reset();
+    // Every sortie starts in the chase view, whatever the last one used.
+    setViewMode('chase', true);
     plane.reset(
       new THREE.Vector3(
         world.runwayA.x,
@@ -284,6 +335,12 @@ function startGame() {
     audio.ensureAudioContext();
     const muted = audio.toggleMute();
     hud.showMessage(muted ? 'SOUND OFF' : 'SOUND ON', 1.2);
+  };
+  // C / V switches the seat: cockpit in live play only, never during a
+  // frozen screenshot pose (the four shots always frame the chase view).
+  input.onToggleCockpit = () => {
+    if (game.state !== 'playing' || game.frozen || game.shotMode) return;
+    setViewMode(game.viewMode === 'cockpit' ? 'chase' : 'cockpit');
   };
   input.onConfirm = () => {
     audio.ensureAudioContext();
@@ -359,7 +416,11 @@ function startGame() {
         missions.resumeFlying();
       }
       audio.setFlightSound(plane.throttle, plane.speedKnots);
-      updateChaseCamera(deltaTime);
+      if (game.viewMode === 'cockpit') {
+        updateCockpitCamera(deltaTime);
+      } else {
+        updateChaseCamera(deltaTime);
+      }
     } else if (game.frozen) {
       // Screenshot pose: the world lives (propeller, clouds, rings) but
       // the plane holds its pose and no input is read.

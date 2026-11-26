@@ -53,9 +53,21 @@ export function buildCourierPlane() {
     new THREE.SphereGeometry(0.72, 14, 10),
     glass,
   );
+  canopy.name = 'cockpit-canopy';
   canopy.scale.set(0.85, 0.62, 1.5);
   canopy.position.set(0, 0.62, -0.9);
   group.add(canopy);
+
+  // Cockpit instrument panel: a dark glareshield board with three glowing
+  // dials and a control yoke, mounted on the nose top at the base of the
+  // windscreen and leaning back toward the pilot. It is a cockpit-only
+  // prop — hidden in the chase view (where it would poke out of the
+  // canopy) and shown with the cockpit camera. The panel sits in the
+  // lower-middle of the cockpit frame, below the horizon, with the nose
+  // still reading around it.
+  const cockpitPanel = buildCockpitPanel();
+  cockpitPanel.visible = false;
+  group.add(cockpitPanel);
 
   // Main wing and red wingtips.
   const wing = new THREE.Mesh(new THREE.BoxGeometry(11, 0.18, 1.9), white);
@@ -136,7 +148,46 @@ export function buildCourierPlane() {
   tailWheel.position.set(0, -0.95, 2.9);
   group.add(tailWheel);
 
-  return { group, propeller };
+  return { group, propeller, canopy, cockpitPanel };
+}
+
+// Build the cockpit instrument panel: a dark glareshield board with
+// three glowing dials and a control yoke, mounted on the nose top at the
+// base of the windscreen and leaning back toward the pilot, so the
+// cockpit camera reads its face in the lower-middle of the frame. The
+// board is 1.05 m wide and 0.30 m tall, centred at (0, 0.82, -0.95) —
+// above the fuselage skin there, below the pilot's eye line — with the
+// dials on its upper face so they clear the nose.
+function buildCockpitPanel() {
+  const panel = new THREE.Group();
+  const dark = new THREE.MeshLambertMaterial({ color: 0x1c2733 });
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.3, 0.08), dark);
+  panel.add(board);
+  const dialColors = [0x7df9ff, 0xffc93c, 0x8dff6a, 0xff9a3c];
+  const dialX = [-0.4, -0.15, 0.15, 0.4];
+  for (let i = 0; i < 4; i += 1) {
+    const dial = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, 0.03, 16),
+      new THREE.MeshBasicMaterial({ color: dialColors[i] }),
+    );
+    dial.rotation.x = Math.PI / 2;
+    dial.position.set(dialX[i], 0.05, 0.055);
+    panel.add(dial);
+  }
+  // Control yoke: a short column with a crossbar, just below the board.
+  const column = new THREE.Mesh(
+    new THREE.BoxGeometry(0.07, 0.26, 0.07),
+    dark,
+  );
+  column.position.set(0, -0.26, 0.05);
+  column.rotation.x = 0.35;
+  panel.add(column);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 0.07), dark);
+  bar.position.set(0, -0.15, 0.11);
+  panel.add(bar);
+  panel.position.set(0, 0.82, -0.95);
+  panel.rotation.x = -0.55;
+  return panel;
 }
 
 // Arcade flight model. Position is a THREE.Vector3 in world metres;

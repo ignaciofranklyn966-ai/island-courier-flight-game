@@ -68,10 +68,22 @@ export const CONFIG = {
   // catches up. The camera never banks with the plane, so it never fights
   // the pilot in a turn.
   camera: {
+    fov: 62, // vertical field of view of the chase camera, in degrees
     distance: 15,
     height: 5.2,
     lookAhead: 24,
     followLerp: 4.2,
+    // Cockpit camera: the pilot's seat in the plane's own frame (just
+    // above the nose line), a wider view, and how far the camera rests
+    // below level so the nose and the instrument panel read in the
+    // lower frame.
+    cockpit: {
+      offsetX: 0,
+      offsetY: 1.15,
+      offsetZ: 0.25,
+      fov: 76,
+      pitchDown: 0.07, // radians the cockpit view rests below level
+    },
   },
 
   // Palette: one warm tropical style for sea, sand, grass and sky.
