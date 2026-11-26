@@ -73,16 +73,17 @@ export const CONFIG = {
     height: 5.2,
     lookAhead: 24,
     followLerp: 4.2,
-    // Cockpit camera: the pilot's seat in the plane's own frame (just
-    // above the nose line), a wider view, and how far the camera rests
-    // below level so the nose and the instrument panel read in the
-    // lower frame.
+    // Cockpit camera: the pilot's seat, 737-style — a high eye point
+    // well forward of the wing, looking over the nose rather than at
+    // it, so the nose drops away low in the frame beneath the
+    // windscreen. The view rests further below level than the chase
+    // camera so the panel and the yoke read at the bottom of the frame.
     cockpit: {
       offsetX: 0,
-      offsetY: 1.15,
-      offsetZ: 0.25,
+      offsetY: 1.6,
+      offsetZ: -0.1,
       fov: 76,
-      pitchDown: 0.07, // radians the cockpit view rests below level
+      pitchDown: 0.2, // radians the cockpit view rests below level
     },
   },
 

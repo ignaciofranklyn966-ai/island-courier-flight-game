@@ -42,6 +42,7 @@ export function buildCourierPlane() {
     new THREE.CylinderGeometry(0.97, 0.97, 5.0, 14, 1, true, 0, Math.PI),
     red,
   );
+  stripe.name = 'cheatline-stripe';
   stripe.rotation.x = Math.PI / 2;
   stripe.rotation.y = Math.PI / 2;
   stripe.position.z = 0.2;
@@ -58,13 +59,11 @@ export function buildCourierPlane() {
   canopy.position.set(0, 0.62, -0.9);
   group.add(canopy);
 
-  // Cockpit instrument panel: a dark glareshield board with three glowing
-  // dials and a control yoke, mounted on the nose top at the base of the
-  // windscreen and leaning back toward the pilot. It is a cockpit-only
-  // prop — hidden in the chase view (where it would poke out of the
-  // canopy) and shown with the cockpit camera. The panel sits in the
-  // lower-middle of the cockpit frame, below the horizon, with the nose
-  // still reading around it.
+  // 737-style cockpit interior: glareshield, PFD/ND screens, gauges,
+  // yoke and windscreen frame. It is a cockpit-only prop — hidden in
+  // the chase view (where it would poke out of the canopy) and shown
+  // with the cockpit camera, where it fills the lower frame below the
+  // horizon while the nose drops away beneath the windscreen.
   const cockpitPanel = buildCockpitPanel();
   cockpitPanel.visible = false;
   group.add(cockpitPanel);
@@ -148,46 +147,252 @@ export function buildCourierPlane() {
   tailWheel.position.set(0, -0.95, 2.9);
   group.add(tailWheel);
 
-  return { group, propeller, canopy, cockpitPanel };
+  return { group, propeller, canopy, cockpitPanel, stripe };
 }
 
-// Build the cockpit instrument panel: a dark glareshield board with
-// three glowing dials and a control yoke, mounted on the nose top at the
-// base of the windscreen and leaning back toward the pilot, so the
-// cockpit camera reads its face in the lower-middle of the frame. The
-// board is 1.05 m wide and 0.30 m tall, centred at (0, 0.82, -0.95) —
-// above the fuselage skin there, below the pilot's eye line — with the
-// dials on its upper face so they clear the nose.
+// Build the 737-style anime cockpit interior: a dark glareshield brow
+// across the top of a wide panel, two big screens (a PFD attitude ball
+// with speed/altitude tapes on the left, an ND compass rose on the
+// right), three small round gauges with rims, ticks and needles, a
+// U-shaped yoke low in front of the pilot, and the windscreen frame —
+// centre post, side posts and top bar — so the seat reads as a flight
+// deck at a glance. Cel style: flat bright colours with black edge
+// lines on the big shapes. The whole group is a cockpit-only prop,
+// hidden in the chase view (where it would poke out of the canopy), and
+// it is built in the plane's own frame at the origin, so every part is
+// placed in plane-local coordinates (forward is -Z, the pilot sits at
+// +Z looking forward over the nose).
 function buildCockpitPanel() {
-  const panel = new THREE.Group();
+  const interior = new THREE.Group();
+  interior.name = 'cockpit-interior';
   const dark = new THREE.MeshLambertMaterial({ color: 0x1c2733 });
-  const board = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.3, 0.08), dark);
-  panel.add(board);
-  const dialColors = [0x7df9ff, 0xffc93c, 0x8dff6a, 0xff9a3c];
-  const dialX = [-0.4, -0.15, 0.15, 0.4];
-  for (let i = 0; i < 4; i += 1) {
-    const dial = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.07, 0.03, 16),
-      new THREE.MeshBasicMaterial({ color: dialColors[i] }),
-    );
-    dial.rotation.x = Math.PI / 2;
-    dial.position.set(dialX[i], 0.05, 0.055);
-    panel.add(dial);
+  const darker = new THREE.MeshLambertMaterial({ color: 0x141c26 });
+  const screenFace = new THREE.MeshLambertMaterial({ color: 0x0b1e33 });
+  const tapeFace = new THREE.MeshLambertMaterial({ color: 0x12283d });
+  const blackLine = new THREE.LineBasicMaterial({ color: 0x0a0a0a });
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const pale = new THREE.MeshBasicMaterial({ color: 0xdfe8f0 });
+
+  function box(w, h, d, material) {
+    return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
   }
-  // Control yoke: a short column with a crossbar, just below the board.
-  const column = new THREE.Mesh(
-    new THREE.BoxGeometry(0.07, 0.26, 0.07),
-    dark,
+  // Black cel outline around a mesh: the edge lines ride as children so
+  // they follow the mesh wherever it is placed.
+  function outline(mesh) {
+    mesh.add(
+      new THREE.LineSegments(
+        new THREE.EdgesGeometry(mesh.geometry),
+        blackLine,
+      ),
+    );
+    return mesh;
+  }
+  function flatCircle(radius, segments, color, thetaStart, thetaLength) {
+    return new THREE.Mesh(
+      new THREE.CircleGeometry(
+        radius,
+        segments,
+        thetaStart === undefined ? 0 : thetaStart,
+        thetaLength === undefined ? Math.PI * 2 : thetaLength,
+      ),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+  }
+
+  // PFD: attitude ball (sky above, earth below, white horizon line and
+  // fixed aircraft symbol) with a speed tape left and an altitude tape
+  // right, each with three white ticks.
+  function buildPfd() {
+    const pfd = new THREE.Group();
+    pfd.add(outline(box(0.56, 0.46, 0.02, screenFace)));
+    const z = 0.012;
+    const sky = flatCircle(0.13, 24, 0x35a7e8, 0, Math.PI);
+    sky.position.set(0, 0.02, z);
+    pfd.add(sky);
+    const earth = flatCircle(0.13, 24, 0x8a5a2b, Math.PI, Math.PI);
+    earth.position.set(0, 0.02, z);
+    pfd.add(earth);
+    const horizon = box(0.26, 0.012, 0.004, white);
+    horizon.position.set(0, 0.02, z + 0.002);
+    pfd.add(horizon);
+    const dot = flatCircle(0.014, 12, 0xffffff);
+    dot.position.set(0, 0.02, z + 0.004);
+    pfd.add(dot);
+    for (const side of [-1, 1]) {
+      const wing = box(0.05, 0.012, 0.004, white);
+      wing.position.set(side * 0.06, 0.02, z + 0.004);
+      pfd.add(wing);
+      const tape = box(0.05, 0.3, 0.004, tapeFace);
+      tape.position.set(side * 0.215, 0.02, z);
+      pfd.add(tape);
+      for (const ty of [-0.08, 0.02, 0.12]) {
+        const tick = box(0.05, 0.009, 0.002, white);
+        tick.position.set(side * 0.215, ty, z + 0.002);
+        pfd.add(tick);
+      }
+    }
+    return pfd;
+  }
+
+  // ND: compass rose with ticks, a green route arc, a fixed white
+  // aircraft triangle in the middle and a magenta heading bug on top.
+  function buildNd() {
+    const nd = new THREE.Group();
+    nd.add(outline(box(0.56, 0.46, 0.02, screenFace)));
+    const z = 0.012;
+    const rose = new THREE.Mesh(
+      new THREE.RingGeometry(0.13, 0.155, 32),
+      pale,
+    );
+    rose.position.set(0, 0.02, z);
+    nd.add(rose);
+    for (let i = 0; i < 8; i += 1) {
+      const a = (i / 8) * Math.PI * 2;
+      const tick = box(0.012, 0.03, 0.002, pale);
+      tick.position.set(Math.sin(a) * 0.175, 0.02 + Math.cos(a) * 0.175, z);
+      tick.rotation.z = -a;
+      nd.add(tick);
+    }
+    const route = new THREE.Mesh(
+      new THREE.RingGeometry(0.09, 0.105, 16, 1, -0.6, 1.2),
+      new THREE.MeshBasicMaterial({ color: 0x37d67a }),
+    );
+    route.position.set(0, 0.02, z + 0.001);
+    nd.add(route);
+    const jet = flatCircle(0.04, 3, 0xffffff, Math.PI / 2, Math.PI * 2);
+    jet.position.set(0, 0.02, z + 0.002);
+    nd.add(jet);
+    const bug = flatCircle(0.025, 3, 0xff4fd8, Math.PI / 2, Math.PI * 2);
+    bug.position.set(0, 0.02 + 0.155, z + 0.002);
+    nd.add(bug);
+    return nd;
+  }
+
+  // Small round gauge: pale rim, dark face, five white ticks, a coloured
+  // needle pivoted at the centre and a white hub — a dial, not a dot.
+  function buildGauge(needleColor, needleAngle) {
+    const gauge = new THREE.Group();
+    const rim = new THREE.Mesh(
+      new THREE.RingGeometry(0.068, 0.08, 24),
+      pale,
+    );
+    rim.position.z = 0.002;
+    gauge.add(rim);
+    const face = flatCircle(0.068, 24, 0x0b1e33);
+    face.position.z = 0.001;
+    gauge.add(face);
+    for (let i = 0; i < 5; i += 1) {
+      const a = ((-120 + i * 60) * Math.PI) / 180;
+      const tick = box(0.008, 0.018, 0.002, white);
+      tick.position.set(Math.sin(a) * 0.055, Math.cos(a) * 0.055, 0.003);
+      tick.rotation.z = -a;
+      gauge.add(tick);
+    }
+    const needleGeo = new THREE.BoxGeometry(0.01, 0.055, 0.003);
+    needleGeo.translate(0, 0.0275, 0);
+    const needle = new THREE.Mesh(
+      needleGeo,
+      new THREE.MeshBasicMaterial({ color: needleColor }),
+    );
+    needle.position.z = 0.004;
+    needle.rotation.z = needleAngle;
+    gauge.add(needle);
+    const hub = flatCircle(0.012, 12, 0xffffff);
+    hub.position.z = 0.005;
+    gauge.add(hub);
+    return gauge;
+  }
+
+  // Main panel board, leaning back toward the pilot, with the two screens
+  // and two flanking gauges on its face. It runs tall enough to hide the
+  // fuselage top behind it down to the bottom of the frame, and the
+  // middle of the board is left clear for the yoke in front of it.
+  const board = new THREE.Group();
+  board.position.set(0, 0.78, -1.08);
+  board.rotation.x = -0.3;
+  board.add(outline(box(2.0, 0.75, 0.08, dark)));
+  const pfd = buildPfd();
+  pfd.position.set(-0.5, 0.08, 0.05);
+  board.add(pfd);
+  const nd = buildNd();
+  nd.position.set(0.5, 0.08, 0.05);
+  board.add(nd);
+  const gaugeSpecs = [
+    { x: -0.88, color: 0x37d67a, angle: -0.5 },
+    { x: 0.88, color: 0xff5a4e, angle: 0.3 },
+  ];
+  for (const spec of gaugeSpecs) {
+    const gauge = buildGauge(spec.color, spec.angle);
+    gauge.position.set(spec.x, 0.08, 0.05);
+    board.add(gauge);
+  }
+  interior.add(board);
+
+  // Glareshield: a thin dark brow capping the panel, tilted so its top
+  // face falls away from the pilot's eyes — a brow line above the
+  // screens, not a shelf across the windscreen. Unlit, so it stays one
+  // flat dark tone instead of catching a light top face.
+  const shield = outline(
+    box(
+      2.05,
+      0.12,
+      0.1,
+      new THREE.MeshBasicMaterial({ color: 0x141c26 }),
+    ),
   );
-  column.position.set(0, -0.26, 0.05);
-  column.rotation.x = 0.35;
-  panel.add(column);
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 0.07), dark);
-  bar.position.set(0, -0.15, 0.11);
-  panel.add(bar);
-  panel.position.set(0, 0.82, -0.95);
-  panel.rotation.x = -0.55;
-  return panel;
+  shield.position.set(0, 1.16, -1.12);
+  shield.rotation.x = -0.5;
+  interior.add(shield);
+
+  // U-shaped yoke: column up from the panel's lower edge, a crossbar and
+  // two grips with red caps, low in front of the pilot at the bottom of
+  // the frame, in the clear gap between the two screens.
+  const yoke = new THREE.Group();
+  const column = box(0.06, 0.36, 0.06, dark);
+  column.position.set(0, 0.7, -0.86);
+  column.rotation.x = 0.25;
+  yoke.add(column);
+  const bar = outline(box(0.3, 0.05, 0.05, dark));
+  bar.position.set(0, 0.88, -0.82);
+  yoke.add(bar);
+  for (const side of [-1, 1]) {
+    const grip = box(0.05, 0.16, 0.05, dark);
+    grip.position.set(side * 0.14, 0.95, -0.82);
+    yoke.add(grip);
+    const cap = box(
+      0.055,
+      0.04,
+      0.055,
+      new THREE.MeshLambertMaterial({ color: 0xd23b2e }),
+    );
+    cap.position.set(side * 0.14, 1.04, -0.82);
+    yoke.add(cap);
+  }
+  interior.add(yoke);
+
+  // Windscreen frame: a thin centre post splitting the two front
+  // windows, side posts and a top bar, all leaning slightly back with
+  // the windscreen slope. The bottom of the frame is the glareshield.
+  // Unlit flat dark, like the glareshield, so the frame reads as one
+  // clean graphic outline around the windows.
+  const frameMat = new THREE.MeshBasicMaterial({ color: 0x141c26 });
+  const centerPost = outline(box(0.06, 0.95, 0.06, frameMat));
+  centerPost.position.set(0, 1.5, -1.35);
+  centerPost.rotation.x = -0.1;
+  interior.add(centerPost);
+  for (const side of [-1, 1]) {
+    const post = outline(box(0.06, 1.0, 0.06, frameMat));
+    post.position.set(side * 1.05, 1.5, -1.35);
+    post.rotation.x = -0.1;
+    post.rotation.z = -side * 0.12;
+    interior.add(post);
+  }
+  const topBar = outline(box(2.2, 0.09, 0.06, frameMat));
+  topBar.position.set(0, 1.98, -1.35);
+  topBar.rotation.x = -0.1;
+  interior.add(topBar);
+
+  return interior;
 }
 
 // Arcade flight model. Position is a THREE.Vector3 in world metres;

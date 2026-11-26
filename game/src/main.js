@@ -43,7 +43,7 @@ function startGame() {
   );
 
   const world = new World(scene, shotQuery.seed);
-  const { group: planeMesh, propeller, canopy, cockpitPanel } =
+  const { group: planeMesh, propeller, canopy, cockpitPanel, stripe } =
     buildCourierPlane();
   scene.add(planeMesh);
   const plane = new FlightModel(
@@ -144,14 +144,15 @@ function startGame() {
     camera.lookAt(lookTarget);
   }
 
-  // Cockpit camera: sit in the pilot's seat and look forward over the
-  // nose. The camera rides the plane's heading, pitch and bank (like a
-  // head fixed to the airframe), the mouse drag offsets turn the head to
-  // look around, and the view rests a little below level so the nose and
-  // the instrument panel read in the lower frame. The opaque canopy is
-  // hidden in this view — the pilot looks through the windscreen, not at
-  // the inside of the dome — and the wider field of view keeps the
-  // wingtips reachable with a sideways glance.
+  // Cockpit camera: sit in the pilot's seat, high and forward, and look
+  // over the nose. The camera rides the plane's heading, pitch and bank
+  // (like a head fixed to the airframe), the mouse drag offsets turn the
+  // head to look around, and the view rests below level so the panel,
+  // the glareshield and the yoke read along the bottom of the frame
+  // while the nose drops away beneath the windscreen. The opaque canopy
+  // is hidden in this view — the pilot looks through the windscreen,
+  // not at the inside of the dome — and the wider field of view keeps
+  // the wingtips reachable with a sideways glance.
   function updateCockpitCamera(deltaTime) {
     input.updateCameraOffset(deltaTime);
     const offset = new THREE.Vector3(
@@ -171,19 +172,27 @@ function startGame() {
 
   // Switch between the chase camera and the cockpit seat. The cockpit
   // opens the field of view and hides the canopy; switching back
-  // restores both. Screenshot poses always use the chase camera.
+  // restores both. The cheatline stripe is hidden in the cockpit too:
+  // its shell drapes over the top of the fuselage, and from the pilot's
+  // high eye point it reads as a big red sail across the windscreen —
+  // the chase view keeps it, so the plane's livery is unchanged there.
+  // Screenshot poses always use the chase camera.
   function setViewMode(mode, silent = false) {
+    const cockpit = mode === 'cockpit';
+    // Visibility is applied before the no-change return: beginFlight
+    // calls setViewMode('chase') to reset the seat, and the stripe and
+    // canopy must come back even when the mode was already chase.
+    if (canopy) canopy.visible = !cockpit;
+    if (stripe) stripe.visible = !cockpit;
+    // The glareshield panel only exists in the cockpit: it pokes out of
+    // the canopy, so it must stay hidden in the chase view.
+    if (cockpitPanel) cockpitPanel.visible = cockpit;
     if (mode === game.viewMode) return;
     game.viewMode = mode;
-    const cockpit = mode === 'cockpit';
     camera.fov = cockpit
       ? CONFIG.camera.cockpit.fov
       : CONFIG.camera.fov;
     camera.updateProjectionMatrix();
-    if (canopy) canopy.visible = !cockpit;
-    // The glareshield panel only exists in the cockpit: it pokes out of
-    // the canopy, so it must stay hidden in the chase view.
-    if (cockpitPanel) cockpitPanel.visible = cockpit;
     if (!silent) {
       hud.showMessage(
         cockpit ? 'COCKPIT VIEW — DRAG TO LOOK AROUND' : 'CHASE VIEW',
